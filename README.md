@@ -6,7 +6,7 @@ Automação que busca posts aleatórios de memes brasileiros no Reddit e publica
 
 ```
 Reddit (r/MemesBR, r/ComentariosMelhores, r/MEMEBRASIL)
-           ↓ (OAuth2 API)
+           ↓ (Meme-API Pública - sem app necessário)
     Seleção aleatória de post com mídia
            ↓
     Download (imagem ou vídeo)
@@ -22,26 +22,13 @@ Reddit (r/MemesBR, r/ComentariosMelhores, r/MEMEBRASIL)
 
 Acesse: **Settings → Secrets and variables → Actions → New repository secret**
 
+Você precisa apenas de 2 secrets do Facebook:
+
 | Secret | Onde obter |
 |--------|-----------|
-| `REDDIT_CLIENT_ID` | [reddit.com/prefs/apps](https://www.reddit.com/prefs/apps) → Criar app "script" |
-| `REDDIT_CLIENT_SECRET` | Mesmo painel acima |
-| `FB_PAGE_ID` | ID numérico da sua página do Facebook |
-| `FB_ACCESS_TOKEN` | Token permanente com `pages_manage_posts` |
+| `FB_PAGE_ID` | O mesmo do seu bot Ctarina Santos |
+| `FB_ACCESS_TOKEN` | O mesmo do seu bot Ctarina Santos |
 
-### Como criar o App do Reddit
-
-1. Acesse [reddit.com/prefs/apps](https://www.reddit.com/prefs/apps)
-2. Clique em **"create another app"**
-3. Preencha:
-   - **Name:** `RVS Memes Bot`
-   - **Type:** `script` ← importante!
-   - **redirect uri:** `http://localhost`
-4. Copie o **Client ID** (abaixo do nome do app) e o **Client Secret**
-
-### Como obter o FB_ACCESS_TOKEN permanente
-
-Use o mesmo app Meta e token que já usa no projeto "Ctarina Santos".  
 O token deve ter as permissões:
 - `pages_show_list`
 - `pages_read_engagement`  
