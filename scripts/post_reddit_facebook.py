@@ -300,12 +300,7 @@ def publicar_video_facebook(caminho: str, legenda: str) -> bool:
 
 def formatar_legenda(post: dict) -> str:
     titulo = post.get("titulo", "").strip()
-    autor  = post.get("autor", "")
-    sub    = post.get("subreddit", "")
-    legenda = titulo if titulo else ""
-    if autor and autor not in ("", "[deleted]"):
-        legenda += f"\n\n📌 r/{sub} • u/{autor}"
-    return legenda.strip()
+    return titulo
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #  FLUXO PRINCIPAL
