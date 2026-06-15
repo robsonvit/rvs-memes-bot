@@ -1,0 +1,67 @@
+name: "RVS MEMES — Reddit → Facebook"
+
+on:
+  # Roda automaticamente 3x por dia nos horários de pico BR
+  schedule:
+    - cron: "0 12 * * *"   # 09:00 BRT (horário Brasília)
+    - cron: "0 18 * * *"   # 15:00 BRT
+    - cron: "0 23 * * *"   # 20:00 BRT
+
+  # Permite disparo manual ou via API externa
+  workflow_dispatch:
+  repository_dispatch:
+    types: [trigger-post]
+
+jobs:
+  postar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write   # necessário para fazer commit do state.json
+
+    steps:
+      - name: 📥 Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: 🐍 Configurar Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: 📦 Instalar dependências
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 🎬 Instalar FFmpeg (para processamento de vídeo)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg exiftool
+
+      - name: 🚀 Executar bot Reddit → Facebook
+        env:
+          REDDIT_CLIENT_ID:     ${{ secrets.REDDIT_CLIENT_ID }}
+          REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
+          FB_PAGE_ID:           ${{ secrets.FB_PAGE_ID }}
+          FB_ACCESS_TOKEN:      ${{ secrets.FB_ACCESS_TOKEN }}
+        run: python scripts/post_reddit_facebook.py
+
+      - name: 💾 Salvar mídia postada como artefato (debug)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rvs-post-${{ github.run_number }}
+          path: |
+            media_raw.*
+            media_final.*
+          retention-days: 3
+          if-no-files-found: ignore
+
+      - name: 🔄 Commit e push do state.json
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add state.json
+          git diff --quiet && git diff --staged --quiet || \
+            (git commit -m "chore: atualiza state.json [run #${{ github.run_number }}]" && git push)
