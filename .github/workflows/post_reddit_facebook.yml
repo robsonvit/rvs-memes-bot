@@ -1,13 +1,7 @@
 name: "RVS MEMES — Reddit → Facebook"
 
 on:
-  # Roda automaticamente 3x por dia nos horários de pico BR
-  schedule:
-    - cron: "0 12 * * *"   # 09:00 BRT (horário Brasília)
-    - cron: "0 18 * * *"   # 15:00 BRT
-    - cron: "0 23 * * *"   # 20:00 BRT
-
-  # Permite disparo manual ou via API externa
+  # Permite disparo manual ou via API externa (ex: Google Apps Script)
   workflow_dispatch:
   repository_dispatch:
     types: [trigger-post]
