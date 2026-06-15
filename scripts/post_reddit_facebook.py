@@ -300,7 +300,8 @@ def publicar_video_facebook(caminho: str, legenda: str) -> bool:
 
 def formatar_legenda(post: dict) -> str:
     titulo = post.get("titulo", "").strip()
-    return titulo
+    hashtags = "\n\n#memes #meme #memesbrasil #humor #zueira #risos #comedia #memesengracados #piada #tudum"
+    return (titulo + hashtags).strip()
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #  FLUXO PRINCIPAL
