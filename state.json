@@ -1,6 +1,10 @@
 {
-  "posted_ids": [],
-  "posted_hashes": [],
-  "total_postados": 0,
-  "ultimo_post": null
+  "posted_ids": [
+    "1tvm2ix"
+  ],
+  "posted_hashes": [
+    "d98b53a9a7040d662fa52dc3a9715fea"
+  ],
+  "total_postados": 1,
+  "ultimo_post": "2026-06-15T17:48:50.108692"
 }
