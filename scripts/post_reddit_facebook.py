@@ -10,8 +10,9 @@ Subreddits fonte:
   - r/MEMEBRASIL
 
 Funcionalidades:
-  ✅ Busca via API Pública (meme-api.com) — NÃO precisa de App no Reddit!
-  ✅ Seleção aleatória de subreddit e post
+  ✅ Alternância automática: imagem num run, vídeo no próximo run
+  ✅ Imagens buscadas via meme-api.com (sem App do Reddit)
+  ✅ Vídeos buscados diretamente via API JSON pública do Reddit
   ✅ Controle de duplicatas via state.json (hash + post_id)
   ✅ Suporte a imagens (JPEG, PNG, GIF) e vídeos (MP4)
   ✅ Remoção de metadados (EXIF em imagens, metadados em vídeos)
@@ -75,6 +76,7 @@ def carregar_estado() -> dict:
         "posted_hashes": [],
         "total_postados": 0,
         "ultimo_post": None,
+        "ultimo_tipo_midia": None,  # "imagem" ou "video" — controla alternância
     }
 
 def salvar_estado(estado: dict) -> None:
@@ -104,14 +106,15 @@ def registrar_postagem(estado: dict, post_id: str, media_hash: str = None) -> No
     estado["ultimo_post"] = datetime.now().isoformat()
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  BUSCA DE POSTS VIA MEME-API
+#  BUSCA DE IMAGENS VIA MEME-API
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def buscar_posts(subreddit: str, quantidade: int = 30) -> list:
+def buscar_imagens(subreddit: str, quantidade: int = 30) -> list:
     """
-    Busca memes usando a API pública gratuita (não requer App do Reddit).
+    Busca IMAGENS usando a meme-api.com (não requer App do Reddit).
+    Filtra apenas posts que são imagens (ignora vídeos da API).
     """
-    print(f"[Meme-API] Buscando posts de r/{subreddit}...")
+    print(f"[Meme-API] Buscando imagens de r/{subreddit}...")
     url = f"https://meme-api.com/gimme/{subreddit}/{quantidade}"
     
     try:
@@ -122,34 +125,94 @@ def buscar_posts(subreddit: str, quantidade: int = 30) -> list:
         return []
 
     memes = resp.json().get("memes", [])
-    posts_com_midia = []
+    posts_com_imagem = []
 
     for meme in memes:
-        # Pega a URL do preview com melhor resolução se disponível, senão a URL direta
-        url_midia = meme.get("url")
+        url_midia = meme.get("url", "")
         previews = meme.get("preview", [])
         if previews:
-            url_midia = previews[-1] # último geralmente é a maior resolução
-            
-        extensao = Path(url_midia.split("?")[0]).suffix.lower()
-        tipo = "video" if extensao in EXTENSOES_VIDEO else "imagem"
+            url_midia = previews[-1]  # maior resolução disponível
 
-        # Extrai ID do permalink
+        extensao = Path(url_midia.split("?")[0]).suffix.lower()
+        # Aceita apenas imagens
+        if extensao not in EXTENSOES_IMAGEM:
+            continue
+
         post_id = meme.get("postLink", "").rstrip("/").split("/")[-1]
         if not post_id:
             post_id = url_midia.split("/")[-1]
 
-        posts_com_midia.append({
+        posts_com_imagem.append({
             "id": post_id,
             "titulo": meme.get("title", ""),
             "autor": meme.get("author", ""),
             "subreddit": meme.get("subreddit", subreddit),
-            "midia": {"tipo": tipo, "url": url_midia},
+            "midia": {"tipo": "imagem", "url": url_midia},
             "score": meme.get("ups", 0),
         })
 
-    print(f"[Meme-API] ✓ {len(posts_com_midia)} posts processados de r/{subreddit}")
-    return posts_com_midia
+    print(f"[Meme-API] ✓ {len(posts_com_imagem)} imagens encontradas de r/{subreddit}")
+    return posts_com_imagem
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  BUSCA DE VÍDEOS VIA REDDIT JSON PÚBLICO
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def buscar_videos(subreddit: str, quantidade: int = 25) -> list:
+    """
+    Busca VÍDEOS diretamente via API JSON pública do Reddit (sem App).
+    Filtra posts que são vídeos nativos do Reddit (v.redd.it).
+    """
+    print(f"[Reddit-JSON] Buscando vídeos de r/{subreddit}...")
+    headers = {
+        "User-Agent": "RVSMemesBot/2.0 (bot de memes brasileiro)"
+    }
+    url = f"https://www.reddit.com/r/{subreddit}/hot.json?limit={quantidade}"
+
+    try:
+        resp = requests.get(url, headers=headers, timeout=30)
+        resp.raise_for_status()
+    except requests.RequestException as e:
+        print(f"[Reddit-JSON] ✗ Erro ao buscar r/{subreddit}: {e}")
+        return []
+
+    posts_raw = resp.json().get("data", {}).get("children", [])
+    posts_com_video = []
+
+    for item in posts_raw:
+        post = item.get("data", {})
+
+        # Só pega vídeos nativos do Reddit
+        if not post.get("is_video"):
+            continue
+
+        media = post.get("media") or {}
+        reddit_video = media.get("reddit_video") or {}
+        video_url = reddit_video.get("fallback_url") or reddit_video.get("dash_url")
+
+        if not video_url:
+            continue
+
+        # Remove parâmetros da URL para download direto
+        video_url = video_url.split("?")[0]
+
+        post_id = post.get("id", "")
+        if not post_id:
+            continue
+
+        posts_com_video.append({
+            "id": post_id,
+            "titulo": post.get("title", ""),
+            "autor": post.get("author", ""),
+            "subreddit": post.get("subreddit", subreddit),
+            "midia": {"tipo": "video", "url": video_url},
+            "score": post.get("ups", 0),
+        })
+
+    print(f"[Reddit-JSON] ✓ {len(posts_com_video)} vídeos encontrados de r/{subreddit}")
+    return posts_com_video
+
 
 def escolher_post_valido(posts: list, estado: dict) -> dict | None:
     # Ordena por score para pegar os melhores memes
@@ -386,18 +449,33 @@ def publicar_instagram(ig_user_id: str, url_midia: str, tipo_midia: str, legenda
 
 def main():
     print(f"\n{'═'*60}")
-    print(f"  🤣 RVS MEMES — Bot Reddit → Facebook (via Meme-API)")
+    print(f"  🤣 RVS MEMES — Bot Reddit → Facebook")
     print(f"  ⏰ {datetime.now().strftime('%d/%m/%Y às %H:%M:%S')}")
     print(f"{'═'*60}\n")
 
     estado = carregar_estado()
     print(f"[Estado] {len(estado.get('posted_ids', []))} posts já postados no histórico.")
 
+    # ─── Alternância imagem ↔ vídeo ──────────────────────────────────────────
+    ultimo_tipo = estado.get("ultimo_tipo_midia")
+    if ultimo_tipo == "imagem":
+        tipo_alvo = "video"
+    else:
+        # Começa com imagem se nunca postou, ou se o último foi vídeo
+        tipo_alvo = "imagem"
+
+    print(f"[Alternância] Último tipo postado: {ultimo_tipo or 'nenhum'} → Este run: {tipo_alvo.upper()}")
+
+    # ─── Busca de posts do tipo alvo ─────────────────────────────────────────
     random.shuffle(SUBREDDITS)
     post_escolhido = None
 
     for subreddit in SUBREDDITS:
-        posts = buscar_posts(subreddit, POSTS_POR_BUSCA)
+        if tipo_alvo == "video":
+            posts = buscar_videos(subreddit, POSTS_POR_BUSCA)
+        else:
+            posts = buscar_imagens(subreddit, POSTS_POR_BUSCA)
+
         if not posts:
             continue
         post_escolhido = escolher_post_valido(posts, estado)
@@ -410,7 +488,23 @@ def main():
             break
 
     if not post_escolhido:
-        print("\n[ERRO] Não foi possível encontrar um post novo em nenhum subreddit.")
+        print(f"\n[AVISO] Nenhum {tipo_alvo} novo encontrado. Tentando qualquer tipo disponível...")
+        # Fallback: tenta o tipo oposto se o alvo não tiver resultado
+        for subreddit in SUBREDDITS:
+            if tipo_alvo == "video":
+                posts = buscar_imagens(subreddit, POSTS_POR_BUSCA)
+            else:
+                posts = buscar_videos(subreddit, POSTS_POR_BUSCA)
+            if not posts:
+                continue
+            post_escolhido = escolher_post_valido(posts, estado)
+            if post_escolhido:
+                tipo_alvo = post_escolhido["midia"]["tipo"]
+                print(f"[Fallback] ✓ Usando {tipo_alvo} de r/{subreddit} como alternativa.")
+                break
+
+    if not post_escolhido:
+        print("\n[ERRO] Não foi possível encontrar nenhum post novo em nenhum subreddit.")
         sys.exit(1)
 
     tipo_midia = post_escolhido["midia"]["tipo"]
@@ -463,6 +557,7 @@ def main():
     else:
         print("\n[Instagram] Nenhuma conta Business conectada à Página encontrada (ou falha na API). Pulando IG.")
 
+    estado["ultimo_tipo_midia"] = tipo_midia  # Salva o tipo postado nesta rodada
     registrar_postagem(estado, post_escolhido["id"], media_hash)
     salvar_estado(estado)
 
