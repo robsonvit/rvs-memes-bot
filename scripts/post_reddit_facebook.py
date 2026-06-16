@@ -26,6 +26,7 @@ GitHub Secrets necessários:
 
 import os
 import sys
+import time
 import json
 import random
 import hashlib
@@ -244,7 +245,7 @@ def processar_video(entrada: str, saida: str) -> bool:
         return True
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  PUBLICAÇÃO NO FACEBOOK
+#  PUBLICAÇÃO (FACEBOOK E INSTAGRAM)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def publicar_imagem_facebook(caminho: str, legenda: str) -> bool:
@@ -302,6 +303,82 @@ def formatar_legenda(post: dict) -> str:
     titulo = post.get("titulo", "").strip()
     hashtags = "\n\n#memes #meme #memesbrasil #humor #zueira #risos #comedia #memesengracados #piada #tudum"
     return (titulo + hashtags).strip()
+
+def obter_instagram_id() -> str | None:
+    page_id = os.environ.get("FB_PAGE_ID")
+    token = os.environ.get("FB_ACCESS_TOKEN")
+    if not page_id or not token:
+        return None
+    
+    url = f"https://graph.facebook.com/v20.0/{page_id}?fields=instagram_business_account&access_token={token}"
+    try:
+        resp = requests.get(url, timeout=30)
+        if resp.status_code == 200:
+            data = resp.json()
+            if "instagram_business_account" in data:
+                return data["instagram_business_account"]["id"]
+    except Exception as e:
+        print(f"[Facebook] ✗ Erro ao obter Instagram ID: {e}")
+    return None
+
+def publicar_instagram(ig_user_id: str, url_midia: str, tipo_midia: str, legenda: str) -> bool:
+    token = os.environ.get("FB_ACCESS_TOKEN")
+    print(f"[Instagram] 📸 Iniciando publicação no Instagram ID {ig_user_id}...")
+    
+    url_criar_container = f"https://graph.facebook.com/v20.0/{ig_user_id}/media"
+    payload = {
+        "caption": legenda,
+        "access_token": token
+    }
+    
+    if tipo_midia == "video":
+        payload["media_type"] = "REELS"
+        payload["video_url"] = url_midia
+    else:
+        payload["image_url"] = url_midia
+        
+    try:
+        resp_container = requests.post(url_criar_container, data=payload, timeout=60)
+        if resp_container.status_code != 200:
+            print(f"[Instagram] ✗ Erro ao criar container: {resp_container.text}")
+            return False
+            
+        container_id = resp_container.json().get("id")
+        print(f"[Instagram] ✓ Container criado: {container_id}")
+        
+        if tipo_midia == "video":
+            print(f"[Instagram] ⏳ Aguardando processamento do vídeo no Meta...")
+            max_tentativas = 12
+            for i in range(max_tentativas):
+                time.sleep(10)
+                url_status = f"https://graph.facebook.com/v20.0/{container_id}?fields=status_code&access_token={token}"
+                resp_status = requests.get(url_status, timeout=30)
+                if resp_status.status_code == 200:
+                    status = resp_status.json().get("status_code")
+                    if status == "FINISHED":
+                        print("[Instagram] ✓ Processamento do vídeo concluído!")
+                        break
+                    elif status == "ERROR":
+                        print("[Instagram] ✗ Erro no processamento do vídeo no Meta.")
+                        return False
+                print(f"[Instagram]   ... ainda processando ({i+1}/{max_tentativas})")
+        else:
+            time.sleep(2)
+            
+        print(f"[Instagram] 📤 Publicando post...")
+        url_publish = f"https://graph.facebook.com/v20.0/{ig_user_id}/media_publish"
+        resp_publish = requests.post(url_publish, data={"creation_id": container_id, "access_token": token}, timeout=60)
+        
+        if resp_publish.status_code == 200:
+            print(f"[Instagram] ✓ Post publicado! Post ID: {resp_publish.json().get('id')}")
+            return True
+            
+        print(f"[Instagram] ✗ Erro ao publicar: {resp_publish.text}")
+        return False
+        
+    except Exception as e:
+        print(f"[Instagram] ✗ Erro na requisição: {e}")
+        return False
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #  FLUXO PRINCIPAL
@@ -366,13 +443,25 @@ def main():
     print(f"\n[Legenda]\n{legenda[:200]}{'...' if len(legenda) > 200 else ''}")
 
     if tipo_midia == "video":
-        sucesso = publicar_video_facebook(caminho_final, legenda)
+        sucesso_fb = publicar_video_facebook(caminho_final, legenda)
     else:
-        sucesso = publicar_imagem_facebook(caminho_final, legenda)
+        sucesso_fb = publicar_imagem_facebook(caminho_final, legenda)
 
-    if not sucesso:
+    if not sucesso_fb:
         print("\n[ERRO] Publicação no Facebook falhou.")
         sys.exit(1)
+
+    # ════════════════════════════════════════════════════════════════════
+    #  INSTAGRAM
+    # ════════════════════════════════════════════════════════════════════
+    ig_user_id = obter_instagram_id()
+    if ig_user_id:
+        print(f"\n[Instagram] Conta conectada encontrada ({ig_user_id})")
+        sucesso_ig = publicar_instagram(ig_user_id, url_midia, tipo_midia, legenda)
+        if not sucesso_ig:
+            print("[AVISO] Publicação no Instagram falhou, mas o Facebook funcionou.")
+    else:
+        print("\n[Instagram] Nenhuma conta Business conectada à Página encontrada (ou falha na API). Pulando IG.")
 
     registrar_postagem(estado, post_escolhido["id"], media_hash)
     salvar_estado(estado)
