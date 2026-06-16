@@ -159,25 +159,44 @@ def buscar_imagens(subreddit: str, quantidade: int = 30) -> list:
 #  BUSCA DE VÍDEOS VIA REDDIT JSON PÚBLICO
 # ═══════════════════════════════════════════════════════════════════════════════
 
+import json
+try:
+    from playwright.sync_api import sync_playwright
+except ImportError:
+    sync_playwright = None
+
 def buscar_videos(subreddit: str, quantidade: int = 25) -> list:
     """
-    Busca VÍDEOS diretamente via API JSON pública do Reddit (sem App).
-    Filtra posts que são vídeos nativos do Reddit (v.redd.it).
+    Busca VÍDEOS usando Playwright para contornar bloqueios de IP do Reddit (403).
+    Usa o old.reddit.com JSON que é menos protegido.
     """
-    print(f"[Reddit-JSON] Buscando vídeos de r/{subreddit}...")
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    }
-    url = f"https://www.reddit.com/r/{subreddit}/hot.json?limit={quantidade}"
-
-    try:
-        resp = requests.get(url, headers=headers, timeout=30)
-        resp.raise_for_status()
-    except requests.RequestException as e:
-        print(f"[Reddit-JSON] ✗ Erro ao buscar r/{subreddit}: {e}")
+    print(f"[Playwright] Buscando vídeos de r/{subreddit}...")
+    
+    if sync_playwright is None:
+        print("[Playwright] ✗ Erro: Biblioteca 'playwright' não está instalada.")
         return []
 
-    posts_raw = resp.json().get("data", {}).get("children", [])
+    url = f"https://old.reddit.com/r/{subreddit}/hot.json?limit={quantidade}"
+    posts_raw = []
+    
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            
+            # Vai direto na página JSON
+            page.goto(url)
+            page.wait_for_selector("pre", timeout=15000)
+            
+            text_content = page.locator("pre").inner_text()
+            data = json.loads(text_content)
+            posts_raw = data.get("data", {}).get("children", [])
+            
+            browser.close()
+    except Exception as e:
+        print(f"[Playwright] ✗ Erro ao buscar r/{subreddit}: {e}")
+        return []
+
     posts_com_video = []
 
     for item in posts_raw:
@@ -210,7 +229,7 @@ def buscar_videos(subreddit: str, quantidade: int = 25) -> list:
             "score": post.get("ups", 0),
         })
 
-    print(f"[Reddit-JSON] ✓ {len(posts_com_video)} vídeos encontrados de r/{subreddit}")
+    print(f"[Playwright] ✓ {len(posts_com_video)} vídeos encontrados de r/{subreddit}")
     return posts_com_video
 
 
